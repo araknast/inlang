@@ -219,6 +219,7 @@ export function EditorStateProvider(props: { children: JSXElement }) {
 			}
 		},
 		async (args) => {
+			console.log("repositoryIsCloned 2")
 			const result = await cloneRepository(args)
 			// not blocking the execution by using the callback pattern
 			// the user does not need to wait for the response
@@ -273,6 +274,7 @@ export function EditorStateProvider(props: { children: JSXElement }) {
 			}
 		},
 		async (args) => {
+			console.log("readInlangConfig")
 			const config = await readInlangConfig(args)
 			if (config) {
 				const languages = // TODO: move this into setter logic
@@ -292,6 +294,7 @@ export function EditorStateProvider(props: { children: JSXElement }) {
 				setLanguages(languages)
 				setFilteredLanguages(languages)
 			}
+			console.log("done reading config")
 			return config
 		},
 	)
@@ -543,6 +546,7 @@ export function EditorStateProvider(props: { children: JSXElement }) {
 		}
 
 		// write to filesystem
+		console.log("setResources")
 		writeResources({
 			fs: fs(),
 			config,
@@ -558,11 +562,13 @@ export function EditorStateProvider(props: { children: JSXElement }) {
 	 * If a change in the filesystem is detected, re-read the resources.
 	 */
 	createEffect(() => {
+		console.log("re-reading resources")
 		if (!inlangConfig.error && inlangConfig() && fsChange()) {
 			// setting the origin store because this should not trigger
 			// writing to the filesystem.
 			readResources(inlangConfig()!).then((r) => r && setOriginResources(r))
 		}
+		console.log("done re-reading resources")
 	})
 
 	return (
@@ -621,15 +627,37 @@ async function cloneRepository(args: {
 	}
 
 	// do shallow clone, get first commit and just one branch
-	await raw.clone({
+	await raw.init({
+		fs: args.fs,
+		dir: "/",
+	})
+	await raw.addRemote({
+		fs: args.fs,
+		dir: "/",
+		remote: 'origin',
+		url: `https://${host}/${owner}/${repository}`,
+	})
+	console.log("fetch")
+	let { defaultBranch } = await raw.fetch({
 		fs: args.fs,
 		http,
 		dir: "/",
 		corsProxy: publicEnv.PUBLIC_GIT_PROXY_PATH,
-		url: `https://${host}/${owner}/${repository}`,
+		remote: 'origin',
 		singleBranch: true,
 		depth: 1,
+		onProgress: console.log,
+		onMessage: console.log,
 	})
+	console.log("checkout")
+	defaultBranch = defaultBranch.replace('refs/heads/', '')
+	await raw.checkout({
+		fs: args.fs,
+		dir: "/",
+		ref: defaultBranch,
+		onProgress: console.log,
+	})
+	console.log("done cloning")
 
 	// fetch 100 more commits, can get more commits if needed
 	// https://isomorphic-git.org/docs/en/faq#how-to-make-a-shallow-repository-unshallow
